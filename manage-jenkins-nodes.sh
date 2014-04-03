@@ -81,6 +81,9 @@ function build_groovy_list_from_space_delim_string
         fi
     done
     result="$result ]"
+    if [ "$result" == ' ]' ]; then
+        result="[]"
+    fi
     printf '%s' "$result"
 }
 ##############################################################################
@@ -257,6 +260,52 @@ function gencode_for_node_labels
     printf '%s' "$groovyScript"
 }
 ##############################################################################
+function gencode_for_node_status
+{
+    local nodeList="$1"
+
+    local groovyNodeArray=$(build_groovy_list_from_space_delim_string "$nodeList")
+
+    groovyScript="script= 
+    def node_status_desired(nodename, desiredList)
+    {
+        if(desiredList.size == 0)
+            return true;
+        if(desiredList.contains(nodename))
+            return true;
+        return false;
+    }
+
+    def nodeNames = $groovyNodeArray;
+
+    for (slave in hudson.model.Hudson.instance.slaves) 
+    {
+        if(! node_status_desired(slave.name, nodeNames))
+            continue;
+
+        def computer = slave.getComputer();
+        print(slave.name + ': ');
+        if(computer.isOnline())
+        {
+            print('online\n');
+        }
+        else if(computer.isTemporarilyOffline())
+        {
+            print('offline\n');
+        }
+        else if(computer.isConnecting())
+        {
+            print('connecting\n');
+        }
+        else
+        {
+            print('disconnected\n');
+        }
+    } 
+    "
+    printf '%s' "$groovyScript"
+}
+##############################################################################
 function gencode_for_list_nodes
 {
     local groovyScript
@@ -280,6 +329,7 @@ function usage
     echo "    online-nodes <nodename ...>     - Mark nodes online"
     echo "    offline-nodes <nodename ...>    - Mark nodes administratively offline"
     echo "    node-labels [nodename ...]      - Print labels for all (or specified) nodes"
+    echo "    node-status [nodename ...]      - Print status for all (or specified) nodes"
     echo "    list-nodes                      - Print names of all nodes"
 }
 ##############################################################################
@@ -311,6 +361,9 @@ case "$command" in
         ;;
     node-labels)
         groovyScript=$(gencode_for_node_labels "$*")
+        ;;
+    node-status)
+        groovyScript=$(gencode_for_node_status "$*")
         ;;
     list-nodes)
         groovyScript=$(gencode_for_list_nodes)
